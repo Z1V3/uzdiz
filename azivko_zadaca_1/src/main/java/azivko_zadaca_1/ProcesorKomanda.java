@@ -115,8 +115,16 @@ public class ProcesorKomanda {
 	}
 
 	private void obradiIK(String komanda) {
-
+		for (Map.Entry<String, ZeljeznickaKompozicija> kompozicija : ZeljeznickaMreza.getInstance()
+				.vratiListuKompozicija().entrySet()) {
+			for (VoziloKompozicija voziloKompozicija : kompozicija.getValue().getListaVozila()) {
+				PrijevoznoSredstvo vozilo = voziloKompozicija.getVozilo();
+				System.out.println(vozilo.getOznaka() + " " + voziloKompozicija.getUloga().name() + " " + vozilo.getGodinaProizvodnje() + " " + vozilo.getNamjenaVozila().name() + " " + vozilo.getVrstaPogona().name() + " " + vozilo.getMaxBrzina());
+			}
+		}
 	}
+
+	// OZNAKA ULOGA OPIS GODINA NAMJENA VRSTA POGONA MAX BRZINA
 
 	private void obradiIV() {
 		int brojVozila = 0;

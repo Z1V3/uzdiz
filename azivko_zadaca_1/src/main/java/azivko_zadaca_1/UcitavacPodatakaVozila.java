@@ -8,241 +8,274 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class UcitavacPodatakaVozila implements UcitavacPodataka {
-	private List<String> errors = new ArrayList<>();
+    private List<String> pogreske = new ArrayList<>();
 
-	@Override
-	public List<String> ucitaj(String imeDatoteke) {
-		try (BufferedReader reader = new BufferedReader(new FileReader(imeDatoteke))) {
-			processFileContent(reader);
-		} catch (IOException e) {
-			errors.add("Failed to read file: " + imeDatoteke);
-		}
-		return errors;
-	}
+    @Override
+    public List<String> ucitaj(String imeDatoteke) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(imeDatoteke))) {
+            obradiSadrzajDatoteke(reader);
+        } catch (IOException e) {
+            pogreske.add("Neuspješno čitanje datoteke: " + imeDatoteke);
+        }
+        return pogreske;
+    }
 
-	private void processFileContent(BufferedReader reader) throws IOException {
-		String line;
-		int lineNumber = 0;
-		while ((line = reader.readLine()) != null) {
-			lineNumber++;
-			if(line.contains("Oznaka;"))
-				lineNumber = 0;
-			if (shouldSkipLine(line, lineNumber))
-				continue;
+    private void obradiSadrzajDatoteke(BufferedReader reader) throws IOException {
+        String redak;
+        int brojRetka = 0;
+        while ((redak = reader.readLine()) != null) {
+            brojRetka++;
+            if (redak.contains("Oznaka;"))
+                brojRetka = 0;
+            if (trebaPreskocitiRedak(redak, brojRetka))
+                continue;
 
-			String[] data = line.split(";");
-			if (!isValidVehicleData(data, lineNumber, line))
-				continue;
-			processVehicleData(data, lineNumber, line);
-		}
-	}
+            String[] podaci = redak.split(";");
+            if (!jeIspravanPodatakVozila(podaci, brojRetka, redak))
+                continue;
+            obradiPodatkeVozila(podaci, brojRetka, redak);
+        }
+    }
 
-	private boolean shouldSkipLine(String line, int lineNumber) {
-		return line.trim().isEmpty() || line.startsWith("#") || line.contains("Oznaka;") || line.startsWith(";");
-	}
+    private boolean trebaPreskocitiRedak(String redak, int brojRetka) {
+        return redak.trim().isEmpty() || redak.startsWith("#") || redak.contains("Oznaka;") || redak.startsWith(";");
+    }
 
-	private void processVehicleData(String[] data, int lineNumber, String line) {
-		PrijevoznoSredstvo vozilo = createVehicle(data, lineNumber, line);
-		if (vozilo != null) {
-			ZeljeznickaMreza.getInstance().dodajVozilo(data[0], vozilo);
-		}
-	}
+    private void obradiPodatkeVozila(String[] podaci, int brojRetka, String redak) {
+        PrijevoznoSredstvo vozilo = kreirajVozilo(podaci, brojRetka, redak);
+        if (vozilo != null) {
+            ZeljeznickaMreza.getInstance().dodajVozilo(podaci[0], vozilo);
+        }
+    }
 
-	private void formatDataFields(String[] data) {
-		data[14] = data[14].replace(",", ".");
-		data[15] = data[15].replace(",", ".");
-		data[8] = data[8].replace(",", ".");
-	}
+    private void formatirajPoljaPodataka(String[] podaci) {
+        podaci[14] = podaci[14].replace(",", ".");
+        podaci[15] = podaci[15].replace(",", ".");
+        podaci[8] = podaci[8].replace(",", ".");
+    }
 
-	private PrijevoznoSredstvo createVehicle(String[] data, int lineNumber, String line) {
-		try {
-			return new PrijevoznoSredstvo(data[0], determineVehiclePurpose(data[4], lineNumber, line),
-					determineVehicleType(data[5], lineNumber, line), determineVehicleDrive(data[6], lineNumber, line),
-					Double.valueOf(data[8]), Double.valueOf(data[7]), Integer.valueOf(data[3]), data[2],
-					determineSpace(data[9], data[10], data[12], data[11], data[13], lineNumber, line),
-					Double.valueOf(data[14]), Integer.valueOf(data[16]), determineStatus(data[17], lineNumber, line));
-		} catch (Exception e) {
-			errors.add("Error creating vehicle in line " + lineNumber + ": " + line);
-			return null;
-		}
-	}
+    private PrijevoznoSredstvo kreirajVozilo(String[] podaci, int brojRetka, String redak) {
+        try {
+            return new PrijevoznoSredstvo(podaci[0], odrediNamjenuVozila(podaci[4], brojRetka, redak),
+                    odrediVrstuVozila(podaci[5], brojRetka, redak), odrediVrstuPogona(podaci[6], brojRetka, redak),
+                    Double.valueOf(podaci[8]), Double.valueOf(podaci[7]), Integer.valueOf(podaci[3]), podaci[2],
+                    odrediProstor(podaci[9], podaci[10], podaci[12], podaci[11], podaci[13], brojRetka, redak),
+                    Double.valueOf(podaci[14]), Integer.valueOf(podaci[16]), odrediStatus(podaci[17], brojRetka, redak));
+        } catch (Exception e) {
+            pogreske.add("Pogreška pri kreiranju vozila u retku " + brojRetka + ": " + redak);
+            return null;
+        }
+    }
 
-	private NamjenaVozila determineVehiclePurpose(String purpose, int lineNumber, String line) {
-		switch (purpose) {
-		case "PSVPVK":
-			return NamjenaVozila.PSVPVK;
-		case "PSVP":
-			return NamjenaVozila.PSVP;
-		case "PSBP":
-			return NamjenaVozila.PSBP;
-		default:
-			addErrorToList(lineNumber, line, "Neispravna namjena vozila");
-			return null;
-		}
-	}
+    private NamjenaVozila odrediNamjenuVozila(String namjena, int brojRetka, String redak) {
+        switch (namjena) {
+            case "PSVPVK":
+                return NamjenaVozila.PSVPVK;
+            case "PSVP":
+                return NamjenaVozila.PSVP;
+            case "PSBP":
+                return NamjenaVozila.PSBP;
+            default:
+                dodajPogreskuURedak(brojRetka, redak, "Neispravna namjena vozila");
+                return null;
+        }
+    }
 
-	private VrstaPrijevoza determineVehicleType(String type, int lineNumber, String line) {
-		switch (type) {
-		case "N":
-			return VrstaPrijevoza.N;
-		case "P":
-			return VrstaPrijevoza.P;
-		case "TA":
-			return VrstaPrijevoza.TA;
-		case "TK":
-			return VrstaPrijevoza.TK;
-		case "TPS":
-			return VrstaPrijevoza.TPS;
-		case "TRS":
-			return VrstaPrijevoza.TRS;
-		case "TTS":
-			return VrstaPrijevoza.TTS;
-		default:
-			addErrorToList(lineNumber, line, "Neispravna vrsta prijevoza");
-			return null;
-		}
-	}
+    private VrstaPrijevoza odrediVrstuVozila(String vrsta, int brojRetka, String redak) {
+        switch (vrsta) {
+            case "N":
+                return VrstaPrijevoza.N;
+            case "P":
+                return VrstaPrijevoza.P;
+            case "TA":
+                return VrstaPrijevoza.TA;
+            case "TK":
+                return VrstaPrijevoza.TK;
+            case "TPS":
+                return VrstaPrijevoza.TPS;
+            case "TRS":
+                return VrstaPrijevoza.TRS;
+            case "TTS":
+                return VrstaPrijevoza.TTS;
+            default:
+                dodajPogreskuURedak(brojRetka, redak, "Neispravna vrsta prijevoza");
+                return null;
+        }
+    }
 
-	private VrstaPogona determineVehicleDrive(String drive, int lineNumber, String line) {
-		switch (drive) {
-		case "N":
-			return VrstaPogona.N;
-		case "D":
-			return VrstaPogona.D;
-		case "B":
-			return VrstaPogona.B;
-		case "E":
-			return VrstaPogona.E;
-		case "S":
-			return VrstaPogona.S;
-		default:
-			addErrorToList(lineNumber, line, "Neispravna vrsta pogona");
-			return null;
-		}
-	}
+    private VrstaPogona odrediVrstuPogona(String pogon, int brojRetka, String redak) {
+        switch (pogon) {
+            case "N":
+                return VrstaPogona.N;
+            case "D":
+                return VrstaPogona.D;
+            case "B":
+                return VrstaPogona.B;
+            case "E":
+                return VrstaPogona.E;
+            case "S":
+                return VrstaPogona.S;
+            default:
+                dodajPogreskuURedak(brojRetka, redak, "Neispravna vrsta pogona");
+                return null;
+        }
+    }
 
-	private ArrayList<Integer> determineSpace(String sit, String stand, String bed, String bicycle, String car,
-			int lineNumber, String line) {
-		ArrayList<Integer> space = new ArrayList<>();
-		space.add(Integer.valueOf(sit));
-		space.add(Integer.valueOf(stand));
-		space.add(Integer.valueOf(bed));
-		space.add(Integer.valueOf(bicycle));
-		space.add(Integer.valueOf(car));
+    private ArrayList<Integer> odrediProstor(String sjedece, String stajace, String krevete, String bicikle, String automobili,
+                                              int brojRetka, String redak) {
+        ArrayList<Integer> prostor = new ArrayList<>();
+        prostor.add(Integer.valueOf(sjedece));
+        prostor.add(Integer.valueOf(stajace));
+        prostor.add(Integer.valueOf(krevete));
+        prostor.add(Integer.valueOf(bicikle));
+        prostor.add(Integer.valueOf(automobili));
 
-		return space;
-	}
+        return prostor;
+    }
 
-	private StatusVozila determineStatus(String status, int lineNumber, String line) {
-		switch (status) {
-		case "I":
-			return StatusVozila.I;
-		case "K":
-			return StatusVozila.K;
-		default:
-			addErrorToList(lineNumber, line, "Neispravan status vozila");
-			return null;
-		}
-	}
+    private StatusVozila odrediStatus(String status, int brojRetka, String redak) {
+        switch (status) {
+            case "I":
+                return StatusVozila.I;
+            case "K":
+                return StatusVozila.K;
+            default:
+                dodajPogreskuURedak(brojRetka, redak, "Neispravan status vozila");
+                return null;
+        }
+    }
+    
+    public boolean jeIspravanPodatakVozila(String[] podaci, int brojRetka, String redak) {
+        boolean ispravno = true;
 
-	private boolean isValidVehicleData(String[] data, int lineNumber, String line) {
-		boolean valid = true;
-		if (data.length != 18) {
-			addErrorToList(lineNumber, line, "Nedostaju podaci");
-			return false;
-		}
+        if (!jeIspravnaDuljinaPodataka(podaci, brojRetka, redak)) ispravno = false;
+        formatirajPoljaPodataka(podaci);
+        if (!jeIspravnaNamjenaVozila(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravnaVrstaPrijevoza(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravanStatus(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravnaVrstaPogona(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravnaGodina(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravnaBrzina(podaci, brojRetka, redak)) ispravno = false;
+        if (!jesuLiSjedistaIVrijednostiIspravni(podaci, brojRetka, redak)) ispravno = false;
+        if (!jeIspravnaSnaga(podaci, brojRetka, redak)) ispravno = false;
+        if (!jesuLiTezinaPovrsinaZapreminaIspravni(podaci, brojRetka, redak)) ispravno = false;
 
-		formatDataFields(data);
+        return ispravno;
+    }
+    
+    private boolean jeIspravnaDuljinaPodataka(String[] podaci, int brojRetka, String redak) {
+        if (podaci.length != 18) {
+            dodajPogreskuURedak(brojRetka, redak, "Linija mora imati točno 18 polja/stupaca, ni više ni manje");
+            return false;
+        }
+        return true;
+    }
 
-		if (!"PSVPVK".equals(data[4]) && !"PSVP".equals(data[4]) && !"PSBP".equals(data[4])) {
-			addErrorToList(lineNumber, line,
-					"Stupac 5 (Namjena vozila) Nema ispravnu vrijednost, moguce vrijednosti su PSVPVK/PSVP/PSBP");
-			valid = false;
-		}
+    private boolean jeIspravnaNamjenaVozila(String[] podaci, int brojRetka, String redak) {
+        String namjena = podaci[4];
+        if (!"PSVPVK".equals(namjena) && !"PSVP".equals(namjena) && !"PSBP".equals(namjena)) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 5 (Namjena vozila) nema ispravnu vrijednost, moguće vrijednosti su PSVPVK/PSVP/PSBP");
+            return false;
+        }
+        return true;
+    }
 
-		if (!"N".equals(data[5]) && !"P".equals(data[5]) && !"TA".equals(data[5]) && !"TK".equals(data[5])
-				&& !"TPS".equals(data[5]) && !"TRS".equals(data[5]) && !"TTS".equals(data[5])) {
-			addErrorToList(lineNumber, line,
-					"Stupac 6 (Vrsta prijevoza) Nema ispravnu vrijednost, moguce vrijednosti su N/P/TA/TK/TPS/TRS/TTS");
-			valid = false;
-		}
+    private boolean jeIspravnaVrstaPrijevoza(String[] podaci, int brojRetka, String redak) {
+        String vrstaPrijevoza = podaci[5];
+        if (!"N".equals(vrstaPrijevoza) && !"P".equals(vrstaPrijevoza) && !"TA".equals(vrstaPrijevoza)
+                && !"TK".equals(vrstaPrijevoza) && !"TPS".equals(vrstaPrijevoza) && !"TRS".equals(vrstaPrijevoza)
+                && !"TTS".equals(vrstaPrijevoza)) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 6 (Vrsta prijevoza) nema ispravnu vrijednost, moguće vrijednosti su N/P/TA/TK/TPS/TRS/TTS");
+            return false;
+        }
+        return true;
+    }
 
-		if (!"I".equals(data[17]) && !"K".equals(data[17])) {
-			addErrorToList(lineNumber, line, "Stupac 18 (Status) Nema ispravnu vrijednost, moguce vrijednosti su I/K");
-			valid = false;
-		}
+    private boolean jeIspravanStatus(String[] podaci, int brojRetka, String redak) {
+        String status = podaci[17];
+        if (!"I".equals(status) && !"K".equals(status)) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 18 (Status) nema ispravnu vrijednost, moguće vrijednosti su I/K");
+            return false;
+        }
+        return true;
+    }
 
-		if (!"N".equals(data[6]) && !"D".equals(data[6]) && !"B".equals(data[6]) && !"E".equals(data[6])
-				&& !"S".equals(data[6])) {
-			addErrorToList(lineNumber, line, "Stupac 7 (Vrsta pogona) Nema ispravnu vrijednost");
-			valid = false;
-		}
+    private boolean jeIspravnaVrstaPogona(String[] podaci, int brojRetka, String redak) {
+        String vrstaPogona = podaci[6];
+        if (!"N".equals(vrstaPogona) && !"D".equals(vrstaPogona) && !"B".equals(vrstaPogona)
+                && !"E".equals(vrstaPogona) && !"S".equals(vrstaPogona)) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 7 (Vrsta pogona) nema ispravnu vrijednost");
+            return false;
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[3]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 4 (Godina) nema ispravnu vrijednost");
-			valid = false;
-		} else if (Integer.valueOf(data[3]) < 1900 || Integer.valueOf(data[3]) > 2024) {
-			addErrorToList(lineNumber, line, "Stupac 4 (Godina) nije u dozvoljenom rasponu vrijednosti (1900-2024)");
-			valid = false;
-		}
+    private boolean jeIspravnaGodina(String[] podaci, int brojRetka, String redak) {
+        if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(podaci[3]).matches()) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 4 (Godina) nema ispravnu vrijednost");
+            return false;
+        }
+        int godina = Integer.valueOf(podaci[3]);
+        if (godina < 1900 || godina > 2024) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 4 (Godina) nije u dozvoljenom rasponu vrijednosti (1900-2024)");
+            return false;
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[7]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 8 (Brzina) nema ispravnu vrijednost");
-			valid = false;
-		} else if (Integer.valueOf(data[7]) < 1 || Integer.valueOf(data[7]) > 200) {
-			addErrorToList(lineNumber, line, "Stupac 8 (Brzina) nije u dozvoljenom rasponu vrijednosti (1-200)");
-			valid = false;
-		}
+    private boolean jeIspravnaBrzina(String[] podaci, int brojRetka, String redak) {
+        if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(podaci[7]).matches()) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 8 (Brzina) nema ispravnu vrijednost");
+            return false;
+        }
+        int brzina = Integer.valueOf(podaci[7]);
+        if (brzina < 1 || brzina > 200) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 8 (Brzina) nije u dozvoljenom rasponu vrijednosti (1-200)");
+            return false;
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[9]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 10 (Br. sjedecih mjesta) nema ispravnu vrijednost");
-			valid = false;
-		}
+    private boolean jesuLiSjedistaIVrijednostiIspravni(String[] podaci, int brojRetka, String redak) {
+        String[] stupciZaProvjeru = {podaci[9], podaci[10], podaci[11], podaci[12], podaci[13]};
+        String[] naziviStupaca = {"Br. sjedecih mjesta", "Br. stajacih mjesta", "Br. bicikala", "Br. kreveta", "Br. automobila"};
 
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[10]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 11 (Br. stajacih mjesta) nema ispravnu vrijednost");
-			valid = false;
-		}
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[11]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 12 (Br. bicikala) nema ispravnu vrijednost");
-			valid = false;
-		}
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[12]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 13 (Br. kreveta) nema ispravnu vrijednost");
-			valid = false;
-		}
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[13]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 14 (Br. automobila) nema ispravnu vrijednost");
-			valid = false;
-		}
+        for (int i = 0; i < stupciZaProvjeru.length; i++) {
+            if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(stupciZaProvjeru[i]).matches()) {
+                dodajPogreskuURedak(brojRetka, redak, "Stupac " + (10 + i) + " (" + naziviStupaca[i] + ") nema ispravnu vrijednost");
+                return false;
+            }
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isDoubleWithNegRegex).matcher(data[8]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 9 (Max snaga) nema ispravnu vrijednost");
-			valid = false;
-		} else if (Double.valueOf(data[8]) != -1 && !(Double.valueOf(data[8]) >= 0 && Double.valueOf(data[8]) <= 10)) {
-			addErrorToList(lineNumber, line, "Stupac 9 (Max snaga) nije u dozvoljenom rasponu vrijednosti (-1/0/0-10)");
-			valid = false;
-		}
+    private boolean jeIspravnaSnaga(String[] podaci, int brojRetka, String redak) {
+        if (!Pattern.compile(RegExUtils.isDoubleWithNegRegex).matcher(podaci[8]).matches()) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 9 (Max snaga) nema ispravnu vrijednost");
+            return false;
+        }
+        double snaga = Double.valueOf(podaci[8]);
+        if (snaga != -1 && !(snaga >= 0 && snaga <= 10)) {
+            dodajPogreskuURedak(brojRetka, redak, "Stupac 9 (Max snaga) nije u dozvoljenom rasponu vrijednosti (-1/0/0-10)");
+            return false;
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isDoubleRegex).matcher(data[14]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 15 (Nosivost) nema ispravnu vrijednost");
-			valid = false;
-		}
+    private boolean jesuLiTezinaPovrsinaZapreminaIspravni(String[] podaci, int brojRetka, String redak) {
+        String[] stupci = {podaci[14], podaci[15], podaci[16]};
+        String[] naziviStupaca = {"Nosivost", "Povrsina", "Zapremina"};
 
-		if (!Pattern.compile(RegExUtils.isDoubleRegex).matcher(data[15]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 16 (Povrsina) nema ispravnu vrijednost");
-			valid = false;
-		}
+        for (int i = 0; i < stupci.length; i++) {
+            if (!Pattern.compile(RegExUtils.isDoubleRegex).matcher(stupci[i]).matches()) {
+                dodajPogreskuURedak(brojRetka, redak, "Stupac " + (15 + i) + " (" + naziviStupaca[i] + ") nema ispravnu vrijednost");
+                return false;
+            }
+        }
+        return true;
+    }
 
-		if (!Pattern.compile(RegExUtils.isDoubleRegex).matcher(data[16]).matches()) {
-			addErrorToList(lineNumber, line, "Stupac 17 (Zapremina) nema ispravnu vrijednost");
-			valid = false;
-		}
-
-		return valid;
-	}
-
-	private void addErrorToList(int lineNumber, String line, String message) {
-		errors.add(message + " u liniji " + lineNumber + "\n Linija: " + line);
-	}
+    private void dodajPogreskuURedak(int brojRetka, String redak, String poruka) {
+        pogreske.add(poruka + " u retku " + brojRetka + "\n Redak: " + redak);
+    }
 }

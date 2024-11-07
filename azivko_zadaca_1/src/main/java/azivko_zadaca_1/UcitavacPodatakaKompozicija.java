@@ -8,125 +8,171 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class UcitavacPodatakaKompozicija implements UcitavacPodataka {
-	private List<String> errors = new ArrayList<>();
-	ArrayList<VoziloKompozicija> listaVozilaKompozicija = new ArrayList<VoziloKompozicija>();
-	Integer oznakaKompozicijeProsliRed = 0;
+    private List<String> greske = new ArrayList<>();
+    ArrayList<VoziloKompozicija> listaVozilaKompozicija = new ArrayList<>();
+    Integer oznakaKompozicijeProsliRed = 0;
 
-	@Override
-	public List<String> ucitaj(String imeDatoteke) {
-		try (BufferedReader reader = new BufferedReader(new FileReader(imeDatoteke))) {
-			processFileContent(reader);
-		} catch (IOException e) {
-			errors.add("Failed to read file: " + imeDatoteke);
-		}
-		return errors;
-	}
+    @Override
+    public List<String> ucitaj(String imeDatoteke) {
+        try (BufferedReader citac = new BufferedReader(new FileReader(imeDatoteke))) {
+            procesirajSadrzajDatoteke(citac);
+        } catch (IOException e) {
+            greske.add("Neuspjelo citanje datoteke: " + imeDatoteke);
+        }
+        return greske;
+    }
 
-	private void processFileContent(BufferedReader reader) throws IOException {
-		String line;
-		int lineNumber = 0;
-		while ((line = reader.readLine()) != null) {
-			lineNumber++;
-			if(line.contains("Oznaka;"))
-				lineNumber = 0;
-			if (shouldSkipLine(line, lineNumber))
-				continue;
+    private void procesirajSadrzajDatoteke(BufferedReader citac) throws IOException {
+        String redak;
+        int brojRetka = 0;
+        while ((redak = citac.readLine()) != null) {
+            brojRetka++;
+            if (redak.contains("Oznaka;")) brojRetka = 0;
+            if (preskociRedak(redak, brojRetka)) continue;
 
-			String[] data = line.split(";");
-			if (!isValidCompositionData(data, lineNumber, line))
-				continue;
-			if (lineNumber == 1)
-				oznakaKompozicijeProsliRed = Integer.valueOf(data[0]);
-			processValidLine(data, lineNumber, line);
-		}
-	}
+            String[] podaci = redak.split(";");
+            if (!provjeriIspravnostPodataka(podaci, brojRetka, redak)) continue;
 
-	private boolean shouldSkipLine(String line, int lineNumber) {
-		return line.trim().isEmpty() || line.startsWith("#") || line.contains("Oznaka;") || line.startsWith(";");
-	}
+            if (brojRetka == 1) oznakaKompozicijeProsliRed = Integer.valueOf(podaci[0]);
+            obradiIspravanRedak(podaci, brojRetka, redak);
+        }
+        
+        dodajKompozicijuAkoJeIspravna();
+    }
 
-	private boolean isValidCompositionData(String[] data, int lineNumber, String line) {
-		boolean valid = true;
+    private boolean preskociRedak(String redak, int brojRetka) {
+        return redak.trim().isEmpty() || redak.startsWith("#") || redak.contains("Oznaka;") || redak.startsWith(";");
+    }
 
-		if (data.length != 3) {
-			addErrorToList(lineNumber, line, "Not enough fields");
-			return false;
-		}
+    private boolean provjeriIspravnostPodataka(String[] podaci, int brojRetka, String redak) {
+        boolean ispravan = true;
+        if (podaci.length != 3) {
+            dodajGresku(brojRetka, redak, "Mora postojati točno 3 polja u retku.");
+            return false;
+        }
 
-		if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(data[0]).matches()) {
-			addErrorToList(lineNumber, line, "Column 1 (Oznaka) is not a valid integer");
-			valid = false;
-		}
+        if (!Pattern.compile(RegExUtils.isNumberRegex).matcher(podaci[0]).matches()) {
+            dodajGresku(brojRetka, redak, "Kolona 1 (Oznaka) nije valjani cijeli broj.");
+            ispravan = false;
+        }
 
-		if (!ZeljeznickaMreza.getInstance().vratiListuVozila().containsKey(data[1])
-				|| ZeljeznickaMreza.getInstance().vratiVozilo(data[1]).getStatus() == StatusVozila.K) {
-			addErrorToList(lineNumber, line, "There is no vehicle with mark " + data[1]
-					+ " of column 1 in the list of vehicles that is also active");
-		}
-		
-		if (!"P".equals(data[2]) && !"V".equals(data[2])) {
-			addErrorToList(lineNumber, line, "Column 3 (Uloga) is not a valid value, valid values are P/V");
-		}
+        if (!ispravnaVozila(podaci[1])) {
+            dodajGresku(brojRetka, redak, "Nema vozila s oznakom " + podaci[1] + " koje je aktivno.");
+        }
 
-		return valid;
-	}
+        if (!ispravnaUloga(podaci[2])) {
+            dodajGresku(brojRetka, redak, "Kolona 3 (Uloga) nije valjana vrijednost, valjani su P/V.");
+        }
 
-	private void processValidLine(String[] data, int lineNumber, String line) {
-		if(ZeljeznickaMreza.getInstance().vratiVozilo(data[1]).getNamjenaVozila() == NamjenaVozila.PSVPVK) {
-			
-		}
-		
-	    VoziloKompozicija voziloKompozicija = new VoziloKompozicija(
-	        determineRole(data[2]),
-	        ZeljeznickaMreza.getInstance().vratiVozilo(data[1])
-	    );
+        return ispravan;
+    }
 
-	    Integer oznakaKompozicije = Integer.valueOf(data[0]);
-	    if (!oznakaKompozicije.equals(oznakaKompozicijeProsliRed)) {
-	        if (!listaVozilaKompozicija.isEmpty() && isValidComposition(listaVozilaKompozicija)) {
-	            ZeljeznickaKompozicija zeljeznickaKompozicija = new ZeljeznickaKompozicija(
-	                oznakaKompozicijeProsliRed.toString(), 
-	                new ArrayList<>(listaVozilaKompozicija)
-	            );
-	            ZeljeznickaMreza.getInstance().dodajKompoziciju(oznakaKompozicijeProsliRed.toString(), zeljeznickaKompozicija);
-	        }
+    private void obradiIspravanRedak(String[] podaci, int brojRetka, String redak) {
+        PrijevoznoSredstvo vozilo = ZeljeznickaMreza.getInstance().vratiVozilo(podaci[1]);
+        Uloga ulogaIzDatoteke = odrediUlogu(podaci[2]);
 
-	        listaVozilaKompozicija.clear();
-	        oznakaKompozicijeProsliRed = oznakaKompozicije;
-	    }
+        if (ulogaNeOdgovaraNamjeni(vozilo, ulogaIzDatoteke, brojRetka, redak)) return;
 
-	    listaVozilaKompozicija.add(voziloKompozicija);
-	}
+        VoziloKompozicija voziloKompozicija = new VoziloKompozicija(ulogaIzDatoteke, vozilo);
+        Integer oznakaKompozicije = Integer.valueOf(podaci[0]);
+        
+        dodajVoziloUKompoziciju(oznakaKompozicije, voziloKompozicija);
+    }
 
-	private boolean isValidComposition(ArrayList<VoziloKompozicija> composition) {
-	    if (composition.isEmpty() || composition.get(0).getUloga() != Uloga.P) {
-	        return false;
-	    }
+    private boolean ulogaNeOdgovaraNamjeni(PrijevoznoSredstvo vozilo, Uloga uloga, int brojRetka, String redak) {
+        Uloga ocekivanaUloga = mapirajNamjenuUlogu(vozilo.getNamjenaVozila());
+        if (uloga != ocekivanaUloga) {
+            dodajGresku(brojRetka, redak, "Uloga ne odgovara namjeni vozila.");
+            return true;
+        }
+        return false;
+    }
 
-	    for (int i = 1; i < composition.size(); i++) {
-	        VoziloKompozicija current = composition.get(i);
-	        VoziloKompozicija previous = composition.get(i - 1);
+    private void dodajVoziloUKompoziciju(Integer oznakaKompozicije, VoziloKompozicija voziloKompozicija) {
+        if (!oznakaKompozicije.equals(oznakaKompozicijeProsliRed)) {
+            dodajKompozicijuAkoJeIspravna();
+            listaVozilaKompozicija.clear();
+            oznakaKompozicijeProsliRed = oznakaKompozicije;
+        }
+        listaVozilaKompozicija.add(voziloKompozicija);
+    }
 
-	        if (current.getUloga() == Uloga.P && previous.getUloga() != Uloga.P) {
-	            return false;
-	        }
-	    }
+    private void dodajKompozicijuAkoJeIspravna() {
+        if (!listaVozilaKompozicija.isEmpty() && ispravnaKompozicija(listaVozilaKompozicija)) {
+            ZeljeznickaKompozicija kompozicija = new ZeljeznickaKompozicija(
+                oznakaKompozicijeProsliRed.toString(), 
+                new ArrayList<>(listaVozilaKompozicija)
+            );
+            ZeljeznickaMreza.getInstance().dodajKompoziciju(oznakaKompozicijeProsliRed.toString(), kompozicija);
+        }
+    }
 
-	    return true;
-	}
-	
-	private Uloga determineRole(String role) {
-		switch(role) {
-		case "P":
-			return Uloga.P;
-		case "V":
-			return Uloga.V;
-		default:
-			return null;
-		}
-	}
+    private boolean ispravnaKompozicija(ArrayList<VoziloKompozicija> kompozicija) {
+        if (kompozicija.isEmpty()) return false;
 
-	private void addErrorToList(int lineNumber, String line, String message) {
-		errors.add("Error in line " + lineNumber + ": " + line + " - " + message + ".");
-	}
+        VoziloKompozicija prvoVozilo = kompozicija.get(0);
+        if (prvoVozilo.getUloga() != Uloga.P || prvoVozilo.getVozilo().getNamjenaVozila() != NamjenaVozila.PSVPVK) {
+            return false;
+        }
+
+        return provjeriVozila(kompozicija);
+    }
+
+    private boolean provjeriVozila(ArrayList<VoziloKompozicija> kompozicija) {
+        for (int i = 1; i < kompozicija.size(); i++) {
+            VoziloKompozicija trenutno = kompozicija.get(i);
+            VoziloKompozicija prethodno = kompozicija.get(i - 1);
+
+            if (trenutno.getUloga() == Uloga.P && nijePravilnaNamjena(trenutno, prethodno)) {
+                return false;
+            }
+
+            if (trenutno.getUloga() == Uloga.V && i == 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean nijePravilnaNamjena(VoziloKompozicija trenutno, VoziloKompozicija prethodno) {
+        NamjenaVozila trenutnaNamjena = trenutno.getVozilo().getNamjenaVozila();
+        return (trenutnaNamjena == NamjenaVozila.PSVP || trenutnaNamjena == NamjenaVozila.PSVPVK)
+                && prethodno.getUloga() != Uloga.P;
+    }
+
+    private Uloga mapirajNamjenuUlogu(NamjenaVozila namjena) {
+        switch (namjena) {
+            case PSVPVK:
+            case PSVP:
+                return Uloga.P;
+            case PSBP:
+                return Uloga.V;
+            default:
+                return null;
+        }
+    }
+
+    private Uloga odrediUlogu(String uloga) {
+        switch(uloga) {
+            case "P":
+                return Uloga.P;
+            case "V":
+                return Uloga.V;
+            default:
+                return null;
+        }
+    }
+
+    private boolean ispravnaVozila(String oznaka) {
+        return ZeljeznickaMreza.getInstance().vratiListuVozila().containsKey(oznaka) &&
+               ZeljeznickaMreza.getInstance().vratiVozilo(oznaka).getStatus() != StatusVozila.K;
+    }
+
+    private boolean ispravnaUloga(String uloga) {
+        return "P".equals(uloga) || "V".equals(uloga);
+    }
+
+    private void dodajGresku(int brojRetka, String redak, String poruka) {
+        greske.add("Greska u retku " + brojRetka + ": " + redak + " - " + poruka + ".");
+    }
 }

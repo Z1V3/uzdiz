@@ -55,4 +55,8 @@ public class ZeljeznickaMreza {
     	return this.prijevoznaSredstva;
     }
 
+	public HashMap<String, ZeljeznickaKompozicija> vratiListuKompozicija() {
+		return zeljeznickeKompozicije;
+	}
+	
 }
