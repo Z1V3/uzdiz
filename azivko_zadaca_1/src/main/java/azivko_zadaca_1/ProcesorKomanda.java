@@ -124,8 +124,6 @@ public class ProcesorKomanda {
 		}
 	}
 
-	// OZNAKA ULOGA OPIS GODINA NAMJENA VRSTA POGONA MAX BRZINA
-
 	private void obradiIV() {
 		int brojVozila = 0;
 		for (PrijevoznoSredstvo sredstvo : ZeljeznickaMreza.getInstance().vratiListuVozila().values()) {

@@ -30,7 +30,7 @@ public class Zeljeznica {
 		}
 
 		if (staniceDatoteka == null || kompozicijeDatoteka == null || vozilaDatoteka == null) {
-			System.out.println("Missing required files. Please provide paths for stations, lines, and vehicles files.");
+			System.out.println("Fale bitne datoteke. Upisite putanje do datoteka za stanice, vozila i kompozicije.");
 			return;
 		}
 
